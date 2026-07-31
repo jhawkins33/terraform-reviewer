@@ -1,0 +1,16 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets
+.env
+
+# Test files
+test_review.py
+
+# OS
+.DS_Store
+.vscode/
+.idea/
