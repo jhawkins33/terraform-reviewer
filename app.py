@@ -1,8 +1,8 @@
 """
-Terraform Reviewer — Streamlit UI.
+Terraform Reviewer -- Streamlit UI.
 
-Paste Terraform HCL code and get structured security and
-best-practice feedback powered by Claude via Amazon Bedrock.
+Paste Terraform HCL code or upload a .tf file and get structured
+security and best-practice feedback powered by Claude via Amazon Bedrock.
 
 Usage:
     streamlit run app.py
@@ -42,8 +42,9 @@ def load_bedrock():
 
 st.title("🔍 Terraform Reviewer")
 st.caption(
-    "Paste your Terraform HCL below and get structured security and "
-    "best-practice feedback powered by Claude via Amazon Bedrock."
+    "Paste your Terraform HCL below or upload a .tf file, then click "
+    "Review to get structured security and best-practice feedback "
+    "powered by Claude via Amazon Bedrock."
 )
 
 bedrock = load_bedrock()
@@ -52,12 +53,33 @@ col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
     st.subheader("Terraform Code")
+
+    uploaded_file = st.file_uploader(
+        "Upload a .tf file (optional)",
+        type=["tf"],
+        help="Upload a Terraform file to populate the editor below.",
+    )
+
+    # Determine the initial value for the text area:
+    # uploaded file takes priority, otherwise show the example.
+    if uploaded_file is not None:
+        try:
+            file_contents = uploaded_file.read().decode("utf-8")
+        except UnicodeDecodeError:
+            file_contents = uploaded_file.read().decode("latin-1")
+        initial_code = file_contents
+        st.caption(f"Loaded: `{uploaded_file.name}` ({len(file_contents)} chars)")
+    else:
+        initial_code = EXAMPLE_CODE
+
     code = st.text_area(
         "Paste your HCL here",
-        value=EXAMPLE_CODE,
+        value=initial_code,
         height=400,
         label_visibility="collapsed",
+        key=uploaded_file.name if uploaded_file else "default",
     )
+
     review_btn = st.button("Review", type="primary", use_container_width=True)
 
 with col2:
