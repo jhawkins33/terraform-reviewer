@@ -47,7 +47,7 @@ Reviewing a minimal S3 bucket + IAM role with `AdministratorAccess` returns:
 
 - [x] Core review engine (Claude via Bedrock)
 - [x] Streamlit UI with severity-grouped findings
-- [ ] File upload support (review `.tf` files directly)
+- [x] File upload support (review `.tf` files directly)
 - [ ] Multi-file / directory review
 - [ ] Export findings as markdown or JSON report
 - [ ] Comparison mode (before/after review)
