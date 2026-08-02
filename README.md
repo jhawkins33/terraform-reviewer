@@ -50,4 +50,4 @@ Reviewing a minimal S3 bucket + IAM role with `AdministratorAccess` returns:
 - [x] File upload support (review `.tf` files directly)
 - [x] Multi-file / directory review
 - [ ] Export findings as markdown or JSON report
-- [ ] Comparison mode (before/after review)
+- [x] Comparison mode (before/after review)
