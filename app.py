@@ -11,7 +11,7 @@ Usage:
 """
 
 import streamlit as st
-from src.reviewer import get_bedrock_client, review_terraform
+from src.reviewer import get_bedrock_client, review_terraform, findings_to_markdown, multi_findings_to_markdown
 
 st.set_page_config(
     page_title="Terraform Reviewer",
@@ -151,134 +151,13 @@ with tab_single:
             if result.get("summary"):
                 st.info(result["summary"])
             render_findings(result.get("findings", []))
+            st.download_button(
+                label="Download report (.md)",
+                data=findings_to_markdown(result),
+                file_name="terraform-review.md",
+                mime="text/markdown",
+            )
         elif review_btn:
             st.warning("Paste some Terraform code first.")
         else:
             st.markdown("*Click **Review** to analyze the code on the left.*")
-
-# ── Multi-File ───────────────────────────────────────────────────────────────
-with tab_multi:
-    multi_files = st.file_uploader(
-        "Upload .tf files",
-        type=["tf"],
-        accept_multiple_files=True,
-        key="multi_upload",
-    )
-
-    if len(multi_files) > 1:
-        st.markdown(f"**{len(multi_files)} files uploaded** — reviewing each independently.")
-        st.caption("Cross-file references are not visible within each file's review.")
-
-        if st.button("Review All Files", type="primary", key="multi_btn"):
-            all_high = all_medium = all_low = 0
-            results = {}
-            progress = st.progress(0, text="Starting review...")
-            for i, f in enumerate(multi_files):
-                progress.progress(i / len(multi_files), text=f"Reviewing {f.name}...")
-                try:
-                    c = f.read().decode("utf-8")
-                except UnicodeDecodeError:
-                    c = f.read().decode("latin-1")
-                result = review_terraform(c, bedrock=bedrock)
-                results[f.name] = result
-                findings = result.get("findings", [])
-                all_high += sum(1 for x in findings if x["severity"] == "HIGH")
-                all_medium += sum(1 for x in findings if x["severity"] == "MEDIUM")
-                all_low += sum(1 for x in findings if x["severity"] == "LOW")
-            progress.progress(1.0, text="Done.")
-            st.markdown("---")
-            st.markdown(
-                f"**Summary across {len(multi_files)} files:** "
-                f"{SEVERITY_COLORS['HIGH']} {all_high} HIGH &nbsp; "
-                f"{SEVERITY_COLORS['MEDIUM']} {all_medium} MEDIUM &nbsp; "
-                f"{SEVERITY_COLORS['LOW']} {all_low} LOW"
-            )
-            st.markdown("---")
-            for filename, result in results.items():
-                findings = result.get("findings", [])
-                fh = sum(1 for x in findings if x["severity"] == "HIGH")
-                fm = sum(1 for x in findings if x["severity"] == "MEDIUM")
-                with st.expander(f"`{filename}` — {fh} HIGH, {fm} MEDIUM", expanded=fh > 0):
-                    if result.get("summary"):
-                        st.info(result["summary"])
-                    render_findings(findings)
-    elif len(multi_files) == 1:
-        st.info("Only one file uploaded — use the Single File tab instead.")
-
-# ── Compare ──────────────────────────────────────────────────────────────────
-with tab_compare:
-    st.caption(
-        "Review original and revised Terraform side-by-side. "
-        "See what was fixed, what's new, and what still needs attention."
-    )
-
-    col_before, col_after = st.columns([1, 1], gap="large")
-
-    with col_before:
-        st.subheader("Before")
-        before_file = st.file_uploader("Upload original .tf", type=["tf"], key="before_upload")
-        if before_file:
-            try:
-                before_initial = before_file.read().decode("utf-8")
-            except UnicodeDecodeError:
-                before_initial = before_file.read().decode("latin-1")
-            st.caption(f"Loaded: `{before_file.name}`")
-        else:
-            before_initial = EXAMPLE_CODE
-        before_code = st.text_area("Before HCL", value=before_initial, height=300,
-                                   label_visibility="collapsed", key="before_code")
-
-    with col_after:
-        st.subheader("After")
-        after_file = st.file_uploader("Upload revised .tf", type=["tf"], key="after_upload")
-        if after_file:
-            try:
-                after_initial = after_file.read().decode("utf-8")
-            except UnicodeDecodeError:
-                after_initial = after_file.read().decode("latin-1")
-            st.caption(f"Loaded: `{after_file.name}`")
-        else:
-            after_initial = EXAMPLE_FIXED
-        after_code = st.text_area("After HCL", value=after_initial, height=300,
-                                  label_visibility="collapsed", key="after_code")
-
-    compare_btn = st.button("Compare", type="primary", use_container_width=True, key="compare_btn")
-
-    if compare_btn and before_code.strip() and after_code.strip():
-        with st.spinner("Reviewing both versions..."):
-            before_result = review_terraform(before_code, bedrock=bedrock)
-            after_result = review_terraform(after_code, bedrock=bedrock)
-
-        before_findings = before_result.get("findings", [])
-        after_findings = after_result.get("findings", [])
-        resolved, new, remaining = compare_findings(before_findings, after_findings)
-
-        st.markdown("---")
-        col_r, col_n, col_rem = st.columns(3)
-        col_r.metric("Resolved", len(resolved), delta=f"-{len(resolved)}", delta_color="normal")
-        col_n.metric("New", len(new), delta=f"+{len(new)}" if new else "0", delta_color="inverse")
-        col_rem.metric("Remaining", len(remaining))
-
-        if resolved:
-            st.markdown("### ✅ Resolved")
-            for f in resolved:
-                with st.expander(f"{SEVERITY_COLORS[f['severity']]} {f['severity']} — {f['title']}"):
-                    st.markdown(f["detail"])
-
-        if new:
-            st.markdown("### 🆕 New findings in revised version")
-            for f in new:
-                with st.expander(f"{SEVERITY_COLORS[f['severity']]} {f['severity']} — {f['title']}"):
-                    st.markdown(f["detail"])
-
-        if remaining:
-            st.markdown("### ⚠️ Still present")
-            for f in remaining:
-                with st.expander(f"{SEVERITY_COLORS[f['severity']]} {f['severity']} — {f['title']}"):
-                    st.markdown(f["detail"])
-
-        if not resolved and not new and not remaining:
-            st.success("Both versions look identical in terms of findings.")
-
-    elif compare_btn:
-        st.warning("Paste code in both panels before comparing.")

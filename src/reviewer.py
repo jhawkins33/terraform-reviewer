@@ -88,3 +88,85 @@ def review_terraform(hcl_code: str, bedrock=None) -> dict:
             "findings": [],
             "raw": raw,
         }
+def findings_to_markdown(result: dict, title: str = "Terraform Review Report") -> str:
+    """Generate a markdown report from a review result dict."""
+    from datetime import datetime
+
+    lines = [
+        f"# {title}",
+        f"",
+        f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
+        f"",
+        f"## Summary",
+        f"",
+        result.get("summary", "No summary available."),
+        f"",
+        f"## Findings",
+        f"",
+    ]
+
+    findings = result.get("findings", [])
+    if not findings:
+        lines.append("No issues found.")
+    else:
+        for severity in ["HIGH", "MEDIUM", "LOW"]:
+            group = [f for f in findings if f["severity"] == severity]
+            if group:
+                lines.append(f"### {severity} ({len(group)})")
+                lines.append("")
+                for finding in group:
+                    lines.append(f"**{finding['category']} — {finding['title']}**")
+                    lines.append("")
+                    lines.append(finding["detail"])
+                    lines.append("")
+
+    return "\n".join(lines)
+
+
+def multi_findings_to_markdown(results: dict) -> str:
+    """Generate a combined markdown report for a multi-file review."""
+    from datetime import datetime
+
+    all_findings = []
+    for r in results.values():
+        all_findings.extend(r.get("findings", []))
+
+    total_high = sum(1 for f in all_findings if f["severity"] == "HIGH")
+    total_medium = sum(1 for f in all_findings if f["severity"] == "MEDIUM")
+    total_low = sum(1 for f in all_findings if f["severity"] == "LOW")
+
+    lines = [
+        "# Terraform Multi-File Review Report",
+        "",
+        "*Generated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "*",
+        "*Files reviewed: " + str(len(results)) + "*",
+        "",
+        "## Summary",
+        "",
+        "| Severity | Count |",
+        "|---|---|",
+        "| HIGH | " + str(total_high) + " |",
+        "| MEDIUM | " + str(total_medium) + " |",
+        "| LOW | " + str(total_low) + " |",
+        "",
+        "## Per-File Results",
+        "",
+    ]
+
+    for filename, result in results.items():
+        lines.append("### " + filename)
+        lines.append("")
+        lines.append(result.get("summary", ""))
+        lines.append("")
+        findings = result.get("findings", [])
+        if not findings:
+            lines.append("No issues found.")
+        else:
+            for f in findings:
+                lines.append(
+                    "- **" + f["severity"] + "** (" + f["category"] + ") -- "
+                    + f["title"] + ": " + f["detail"]
+                )
+        lines.append("")
+
+    return "\n".join(lines)
