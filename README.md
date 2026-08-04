@@ -6,13 +6,19 @@ Paste any Terraform configuration and get structured feedback organized by sever
 
 ## What it catches
 
+**Terraform:**
 - **Security**: overly permissive IAM policies, missing S3 encryption, public access enabled, missing bucket policies
 - **Best practices**: missing tags, access logging not configured, hardcoded values that should be variables
 - **Cost/Reliability**: missing versioning, single-AZ deployments, unoptimized instance types
 
+**Ansible:**
+- **Security**: hardcoded credentials/passwords, missing `no_log` on sensitive tasks, world-readable file permissions
+- **Best practices**: missing task names, using `shell`/`command` when purpose-built modules exist, `state: latest` (non-idempotent), overly broad `become`
+- **Reliability**: missing handlers for service restarts
+
 ## Architecture
 
-User pastes HCL → Streamlit UI → Claude (Bedrock) → structured JSON findings → rendered UI
+User pastes HCL or YAML → Streamlit UI → Claude (Bedrock) → structured JSON findings → rendered UI
 No vector search, no persistent infrastructure — just a Bedrock API call per review. Cheap, fast, and stateless.
 
 ## Setup
@@ -51,3 +57,4 @@ Reviewing a minimal S3 bucket + IAM role with `AdministratorAccess` returns:
 - [x] Multi-file / directory review
 - [x] Export findings as markdown or JSON report
 - [x] Comparison mode (before/after review)
+- [x] Ansible playbook reviewer (separate tab with Ansible-specific security and best-practice checks, file upload, markdown export)
