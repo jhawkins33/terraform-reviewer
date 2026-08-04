@@ -12,6 +12,7 @@ Usage:
 
 import streamlit as st
 from src.reviewer import get_bedrock_client, review_terraform, findings_to_markdown, multi_findings_to_markdown
+from src.ansible_reviewer import review_ansible, ansible_findings_to_markdown
 
 st.set_page_config(
     page_title="Terraform Reviewer",
@@ -38,7 +39,7 @@ resource "aws_iam_role_policy_attachment" "admin" {
 
 EXAMPLE_FIXED = """\
 resource "aws_s3_bucket" "example" {
-  bucket = "my-bucket"
+  bucket = "my-bucket"tab_single, 
 }
 
 resource "aws_s3_bucket_public_access_block" "example" {
@@ -62,6 +63,28 @@ resource "aws_iam_role_policy_attachment" "sagemaker" {
   role       = aws_iam_role.example.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSageMakerReadOnly"
 }
+"""
+
+EXAMPLE_ANSIBLE = """\
+---
+- name: Deploy web application
+  hosts: all
+  become: true
+  tasks:
+    - shell: apt-get update && apt-get install -y nginx
+
+    - copy:
+        content: "db_password: supersecret123"
+        dest: /etc/app/config.yml
+        mode: '0644'
+
+    - apt:
+        name: python3
+        state: latest
+
+    - service:
+        name: nginx
+        state: started
 """
 
 
@@ -110,7 +133,7 @@ st.caption("Powered by Claude via Amazon Bedrock.")
 
 bedrock = load_bedrock()
 
-tab_single, tab_multi, tab_compare = st.tabs(["Single File", "Multi-File", "Compare"])
+tab_single, tab_multi, tab_compare, tab_ansible = st.tabs(["Single File", "Multi-File", "Compare", "Ansible"])
 
 # ── Single File ──────────────────────────────────────────────────────────────
 with tab_single:
@@ -161,3 +184,57 @@ with tab_single:
             st.warning("Paste some Terraform code first.")
         else:
             st.markdown("*Click **Review** to analyze the code on the left.*")
+            
+# ── Ansible ──────────────────────────────────────────────────────────────────
+with tab_ansible:
+    st.caption(
+        "Paste an Ansible playbook or upload a .yml file to get structured "
+        "security and best-practice feedback."
+    )
+
+    ansible_file = st.file_uploader(
+        "Upload a playbook .yml file (optional)",
+        type=["yml", "yaml"],
+        key="ansible_upload",
+    )
+
+    col_a1, col_a2 = st.columns([1, 1], gap="large")
+
+    with col_a1:
+        st.subheader("Playbook")
+        if ansible_file:
+            try:
+                ansible_initial = ansible_file.read().decode("utf-8")
+            except UnicodeDecodeError:
+                ansible_initial = ansible_file.read().decode("latin-1")
+            st.caption(f"Loaded: `{ansible_file.name}`")
+        else:
+            ansible_initial = EXAMPLE_ANSIBLE
+
+        ansible_code = st.text_area(
+            "Paste your playbook here",
+            value=ansible_initial,
+            height=400,
+            label_visibility="collapsed",
+            key="ansible_code",
+        )
+        ansible_btn = st.button("Review Playbook", type="primary", use_container_width=True, key="ansible_btn")
+
+    with col_a2:
+        st.subheader("Findings")
+        if ansible_btn and ansible_code.strip():
+            with st.spinner("Reviewing playbook..."):
+                ansible_result = review_ansible(ansible_code, bedrock=bedrock)
+            if ansible_result.get("summary"):
+                st.info(ansible_result["summary"])
+            render_findings(ansible_result.get("findings", []))
+            st.download_button(
+                label="Download report (.md)",
+                data=ansible_findings_to_markdown(ansible_result),
+                file_name="ansible-review.md",
+                mime="text/markdown",
+            )
+        elif ansible_btn:
+            st.warning("Paste a playbook first.")
+        else:
+            st.markdown("*Click **Review Playbook** to analyze the playbook on the left.*")
